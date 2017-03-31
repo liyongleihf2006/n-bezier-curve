@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>n-bezier-curve</title>
+    <style>
+        mark {
+            background-color: #00ff90;
+            display: inline-block;
+            line-height: 1;
+            overflow: hidden;
+        }
+        .fieldGroup{
+            display: inline-block;
+            margin:5px 15px 5px 0;
+        }
+        .field{
+            width: 100px;
+        }
+    </style>
+</head>
+<body>
+<div>
+    <span>n阶贝塞尔曲线公式为:给定点P₀、P₁、⋯、Pn其贝塞尔曲线即</span><br/>
+    <mark>B(t) = C(n,0)P₀(1-t)ⁿt⁰+C(n,1)P₁(1-t)ⁿ⁻ⁱtⁱ+⋯+C(n,n-1)Pn(1-t)⁰tⁿ,t∈[0,1]</mark><br/>
+    <span>如上公式可如下递归表达:用Bp₀p₁pn表示由点P₀、P₁、Pn所决定的贝塞尔曲线,则</span><br/>
+    <mark>B(t) =(1-t)Bp₀p₁pn₋₁(t)+tBp₁p₂pn(t),t∈[0,1]</mark><br/>
+    <span>用平常话来说,n阶的贝塞尔曲线,即双n-1阶贝塞尔曲线之间的插值</span>
+</div>
+<form id="orderForm">
+    <label for="count">贝塞尔曲线的阶数</label><input value="2" type="number" name="order" id="count">
+    <input type="submit" value="确定">
+</form>
+<form id="dataForm">
+
+</form>
+<svg id="svg" height="1000" width="1000"  style="border: 1px solid" xmlns:xlink="http://www.w3.org/1999/xlink">
+</svg>
+<script src="snap.svg-min.js"></script>
+<script>
+    var svg=Snap("#svg"),
+        animateTime=10000,
+        frequency=100,
+        interval=0;
+    document.querySelector("#orderForm").addEventListener("submit",function(e){
+        e.preventDefault();
+        var count=this.count.value,
+            fragment=document.createDocumentFragment();
+        for(var i=0;i<=count;i++){
+            (function(){
+                var fieldGroup=document.createElement("span");
+                fieldGroup.classList.add("fieldGroup");
+                var labelX=document.createElement("label");
+                labelX.innerText="X"+i;
+                fieldGroup.appendChild(labelX);
+                var inputX=document.createElement("input");
+                inputX.classList.add("field");
+                inputX.id="X"+i;
+                inputX.name="X"+i;
+                inputX.value=Math.floor(Math.random()*1000);
+                fieldGroup.appendChild(inputX);
+                var labelY=document.createElement("label");
+                labelY.innerText="Y"+i;
+                fieldGroup.appendChild(labelY);
+                var inputY=document.createElement("input");
+                inputY.classList.add("field");
+                inputY.id="Y"+i;
+                inputY.name="Y"+i;
+                inputY.value=Math.floor(Math.random()*1000);
+                fieldGroup.appendChild(inputY);
+                fragment.appendChild(fieldGroup);
+            })();
+        };
+        fragment.appendChild(
+            function(){
+                var submit=document.createElement("input");
+                submit.type="submit";
+                submit.value="生成";
+                return submit;
+            }()
+        )
+        document.querySelector("#dataForm").innerHTML="";
+        document.querySelector("#dataForm").appendChild(fragment);
+    });
+    document.querySelector("#dataForm").addEventListener("submit",function(e){
+        e.preventDefault();
+        var elements=[].slice.call(this.elements);
+        var inputs=elements.filter(function(element){
+            return element.name;
+        });
+        var datas=inputs.reduce(function(target,input){
+            var name=input.name;
+            var no=name.replace(/[XY]/,"");
+            if(!target[no]){
+                target[no]={};
+            }
+            target[no][name.replace(/\d*/g,"").toLowerCase()]=input.value;
+            return target;
+        },{});
+        datas=Object.keys(datas).map(function(key){
+           return datas[key];
+        });
+        render(datas);
+    });
+    function render(datas){
+        /*
+         * 结束动画
+         * */
+        clearInterval(interval);
+        /*
+         * 清空svg,重新绘制
+         * */
+        svg.clear();
+        /*生成静态辅助线*/
+        auxiliary(datas);
+        var equationXGroups=[];
+        var equationYGroups=[];
+        generateCurve(datas);
+        function generateCurve(datas){
+            var i= 0,
+                t= 0,
+                /*连线以及连线的生成点表达式*/
+                lines=[],
+                /*动态曲线*/
+                dynamicCurve,
+               /*当前点*/
+                currentPoint;
+            generateEquationGroup(datas);
+            equationXGroups.filter(function(equationXGroup,idx){
+                if(equationXGroups.length-1===idx){
+                    var equationYGroup=equationYGroups[idx],
+                        equationX=equationXGroup[0],
+                        equationY=equationYGroup[0];
+                    /*生成动态曲线*/
+                    dynamicCurve={
+                        curve:function(){
+                            var curve=svg.paper.el("polyline",{
+                                fill:"transparent",
+                                stroke:"red",
+                                "stroke-width":2
+                            });
+                            curve.node.setAttribute("marker-end","url(#marker)");
+                            return curve;
+                        }(),
+                        points:[eval(equationX),eval(equationY)],
+                        equationX:equationX,
+                        equationY:equationY
+                    };
+                    currentPoint={
+                        point:svg.paper.el("circle",{
+                            cx:eval(equationX),
+                            cy:eval(equationY),
+                            r:3,
+                            fill:"black"
+                        }),
+                        equationX:equationX,
+                        equationY:equationY
+                    };
+                    svg.paper.el("marker",{
+                        id:"marker",
+                        markerWidth:150,
+                        markerHeight:60,
+                        viewBox:"0 0 600 100",
+                        refX:0,
+                        refY:0
+                    }).add(
+                            svg.paper.el("rect",{
+                                x:"0",
+                                y:"20",
+                                rx:"10",
+                                ry:"10",
+                                width:"600",
+                                height:"80",
+                                fill:"rgba(255,255,0,.3)",
+                                stroke:"rgba(0,0,0,.5)",
+                                "stroke-width":1
+                            })
+                    ).add(
+                            svg.paper.el("text",{
+                                id:"marker-text",
+                                x:"10",
+                                y:"80",
+                                "text":"("+eval(equationX)+","+eval(equationY)+")"
+                            })
+                    ).toDefs()
+                }
+                return equationXGroups.length-1!==idx;
+            }).forEach(function(equationXGroup,idx){
+                var equationYGroup=equationYGroups[idx];
+                equationXGroup.filter(function(equationX,idx){
+                    return equationXGroup.length-1!==idx;
+                }).forEach(function(equationX,idx){
+                    var equationY=equationYGroup[idx];
+                    var nextEquationX=equationXGroup[idx+1];
+                    var nextEquationY=equationYGroup[idx+1];
+                    /*连线*/
+                    lines.push({
+                       line:svg.paper.el("line",{
+                           x1:eval(equationX),
+                           y1:eval(equationY),
+                           x2:eval(nextEquationX),
+                           y2:eval(nextEquationY),
+                           stroke:"rgb(0,255,0)",
+                           fill:"transparent",
+                           "stroke-width":1
+                       }),
+                        x1:equationX,
+                        y1:equationY,
+                        x2:nextEquationX,
+                        y2:nextEquationY
+                    });
+                })
+            });
+            interval=setInterval(function(){
+                i++;
+                t=i*frequency/animateTime;
+                if(t>=1){
+                    clearInterval(interval);
+                }
+                lines.forEach(function(item){
+                   item.line.attr({
+                        x1:eval(item.x1),
+                        y1:eval(item.y1),
+                        x2:eval(item.x2),
+                        y2:eval(item.y2)
+                    });
+                });
+                dynamicCurve.points.push(eval(dynamicCurve.equationX),eval(dynamicCurve.equationY));
+                dynamicCurve.curve.attr("points",dynamicCurve.points);
+                currentPoint.point.attr({"cx":eval(currentPoint.equationX),"cy":eval(currentPoint.equationY)});
+                svg.select("#marker-text").attr({"text":"("+eval(currentPoint.equationX)+","+eval(currentPoint.equationY)+")"});
+            },frequency);
+        }
+        function generateEquationGroup(datas){
+            var XDatas=datas.map(function(data){
+                return data.x;
+            });
+            var YDatas=datas.map(function(data){
+                return data.y;
+            });
+            generateEquation(XDatas,equationXGroups);
+            generateEquation(YDatas,equationYGroups);
+        }
+        function generateEquation(datas,group){
+            if(datas.length===1){
+                return;
+            }
+            var equations=[];
+            datas.filter(function(data,idx){
+                return idx!==datas.length-1;
+            }).forEach(function(data,idx){
+                var nextData=datas[idx+1];
+                var equation=formula(data,nextData);
+                equations.push(equation);
+            });
+            group.push(equations);
+            generateEquation(equations,group);
+        }
+        /*公式*/
+        function formula(data,nextData){
+            return "("+"(1-t)*"+data+"+"+"t*"+nextData+")"
+        }
+    }
+    /**
+     * 辅助线
+     * */
+    function auxiliary(datas){
+        /**
+         * 显示坐标点
+         * */
+        svg.paper.el("g",{
+            "stroke":"gray",
+            "stroke-width":1,
+            "fill":"transparent"
+        }).add(
+            function(){
+              return datas.map(function(data){
+                  return svg.paper.el("circle",{
+                      "cx":data.x,
+                      "cy":data.y,
+                      "r":3
+                  })
+              })
+            }()
+        );
+        /**
+         * 坐标点的标签
+         * */
+        svg.paper.el("g",{
+            "stroke":"gray"
+        }).add(
+            function(){
+                return datas.map(function(data,idx){
+                    return svg.paper.el("text",{
+                        "x":data.x,
+                        "y":data.y,
+                        "dx":5,
+                        "text":"(X"+idx+":"+data.x+",Y"+idx+":"+data.y+")"
+                    })
+                })
+            }()
+        );
+        /**
+         * 坐标点的连线
+         * */
+        svg.paper.el("g",{
+            "stroke":"gray"
+        }).add(
+            function(){
+                return datas.filter(function(data,idx){
+                    return idx!==datas.length-1;
+                }).map(function(data,idx){
+                    return svg.paper.el("line",{
+                        "x1":data.x,
+                        "y1":data.y,
+                        "x2":datas[idx+1].x,
+                        "y2":datas[idx+1].y
+                    })
+                })
+            }()
+        );
+    }
+    /**
+     * 获取组合数量
+    * */
+    function C(n,m){
+        return factorial(n)/(factorial(n-m)*factorial(m));
+    }
+    /*求阶乘*/
+    function factorial(n){
+        return _factorial(n);
+        function _factorial(n){
+            if(n===0){
+                return 1;
+            }
+            return n*_factorial(--n);
+        }
+    }
+</script>
+</body>
+</html>
